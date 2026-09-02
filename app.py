@@ -6,6 +6,9 @@ import time
 import io
 import wave
 import re
+import tempfile
+import whisper
+import torch
 
 # ==============================================================================
 # [SECTION 1] PAGE CONFIGURATION & STYLING
@@ -31,9 +34,17 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Cache AI Model Load to prevent reloading on every Streamlit frame refresh
+@st.cache_resource
+def load_speech_model():
+    # Uses the lightweight 'tiny' model for fast real-time CPU transcription
+    return whisper.load_model("tiny")
+
+whisper_model = load_speech_model()
+
 # Main Dashboard Header
 st.title("📡 SOPHIA-IQ // PLEROMA SPECTRAL COMMAND")
-st.caption("Gnostic Wideband Transceiver • Autonomous Sound/Signal Intelligence • Audio Capture Engine")
+st.caption("Gnostic Wideband Transceiver • Neural Signal Intercept & Transcription Engine")
 
 
 # ==============================================================================
@@ -43,7 +54,6 @@ st.caption("Gnostic Wideband Transceiver • Autonomous Sound/Signal Intelligenc
 st.sidebar.header("🎛️ RF FRONTEND CONTROLS")
 hardware_mode = st.sidebar.radio("Hardware Layer", ["Simulation Engine", "Wideband Hardware Tap (SoapySDR/HackRF)"])
 
-# Full-Spectrum Frequency Tuning (0.1 MHz to 6000 MHz)
 target_freq_mhz = st.sidebar.number_input(
     "Tuned Center Frequency (MHz)", 
     value=1420.405, 
@@ -55,10 +65,11 @@ target_freq_mhz = st.sidebar.number_input(
 translated_offset = st.sidebar.slider("Digital Translator Offset (kHz)", -500, 500, 150)
 tx_enabled = st.sidebar.checkbox("Enable Full-Duplex TX Engine")
 demod_mode = st.sidebar.selectbox("Live Audio Demodulation", ["FM (Frequency Modulation)", "AM (Amplitude Envelope)", "Raw IQ Pass-through"])
+enable_ai_transcription = st.sidebar.checkbox("Enable Neural Audio Transcription (Whisper AI)", value=True)
 
 
 # ==============================================================================
-# [SECTION 3] SIGNAL PROCESSING ENGINE (DSP)
+# [SECTION 3] SIGNAL PROCESSING & AI TRANSCRIPTION ENGINE
 # ==============================================================================
 
 def get_iq_samples(sample_rate=2.4e6, num_samples=16384):
@@ -111,6 +122,19 @@ def generate_pcm_audio_buffer(iq_samples, mode='FM', target_sample_rate=44100):
         wav_file.writeframes(audio_pcm.tobytes())
     
     return wav_io.getvalue()
+
+def transcribe_audio_payload(audio_bytes):
+    """Transcribes audio using OpenAI Whisper AI model."""
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+            tmp_file.write(audio_bytes)
+            tmp_path = tmp_file.name
+
+        result = whisper_model.transcribe(tmp_path)
+        transcript = result.get("text", "").strip()
+        return transcript if transcript else "No intelligible voice/speech detected."
+    except Exception as e:
+        return f"Transcription error: {str(e)}"
 
 # Compute DSP Telemetry
 iq_data = get_iq_samples()
@@ -165,39 +189,37 @@ with col1:
     st.caption("Press play below to monitor demodulated sound:")
     st.audio(audio_bytes, format="audio/wav")
 
-    # Download & Recording Suite
+    # Audio Download
     st.subheader("💾 Recording & Capture Suite")
-    rec_col, cap_col = st.columns(2)
-    
-    with rec_col:
-        st.download_button(
-            label="💾 Download WAV Audio",
-            data=audio_bytes,
-            file_name=f"sophia_intercept_{(target_freq_mhz + (translated_offset/1000)):.3f}MHz.wav",
-            mime="audio/wav",
-            use_container_width=True
-        )
-    
-    with cap_col:
-        st.caption("📷 *Use camera icon on chart top-right to download PNG snapshots.*")
+    st.download_button(
+        label="💾 Download Intercepted WAV Audio",
+        data=audio_bytes,
+        file_name=f"sophia_intercept_{(target_freq_mhz + (translated_offset/1000)):.3f}MHz.wav",
+        mime="audio/wav",
+        use_container_width=True
+    )
+
+    # Audio Intelligence & Transcript Section
+    st.subheader("📝 Live AI Audio Transcript")
+    if enable_ai_transcription:
+        if snr > 8:
+            transcript_text = transcribe_audio_payload(audio_bytes)
+            st.text_area("Whisper AI Speech-to-Text Log", value=transcript_text, height=100)
+        else:
+            st.info("Signal-to-Noise Ratio (SNR) too low for reliable speech decoding.")
+    else:
+        st.caption("AI Audio Transcription disabled in sidebar.")
 
     # Signal Intelligence Output
-    st.subheader("🌐 Sound & Signal Intelligence Parser")
+    st.subheader("🌐 Baseband Parser Output")
     if snr > 12 or status_type == "MATCHED":
-        st.success(f"**ALERT:** Coherent signal burst locked on baseband!\n\n{comms_payload}")
+        st.success(f"**ALERT:** Coherent signal burst locked!\n\n{comms_payload}")
     else:
-        st.info("Monitoring wideband spectrum for structured modulation or non-random anomalies...")
-
-    # Transmit Controls
-    if st.button("🔴 Broadcast Response Waveform", use_container_width=True):
-        if tx_enabled:
-            st.warning(f"Broadcasting tone pulse on {(target_freq_mhz + (translated_offset/1000)):.3f} MHz...")
-        else:
-            st.error("Enable 'Enable Full-Duplex TX Engine' in sidebar first.")
+        st.info("Monitoring wideband spectrum for structured modulation...")
 
 
 # ==============================================================================
-# [SECTION 5] SPECTRAL VISUALIZER & SCREENSHOT SNAPSHOTS
+# [SECTION 5] SPECTRAL VISUALIZER
 # ==============================================================================
 
 with col2:
@@ -249,5 +271,5 @@ with col2:
     })
 
 # Auto-Refresh Loop
-time.sleep(0.4)
+time.sleep(0.5)
 st.rerun()

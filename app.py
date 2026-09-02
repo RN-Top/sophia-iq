@@ -120,7 +120,6 @@ peak_dbm = 10 * np.log10(np.max(fft_vals) + 1e-12)
 snr = peak_dbm - power_dbm
 audio_bytes = generate_pcm_audio_buffer(iq_data, mode=demod_mode)
 
-# Determine State Theme Colors Globally
 status_type, comms_payload = analyze_incoming_payload(iq_data)
 
 if snr > 12 or status_type == "MATCHED":
@@ -223,7 +222,7 @@ with col2:
         fill='tozeroy',
         name='Noise Floor',
         fillcolor=glow,
-        line=dict(color='#00FFCC', width=0),
+        line=dict(color='rgba(0,0,0,0)', width=0),
         showlegend=False
     ))
     
